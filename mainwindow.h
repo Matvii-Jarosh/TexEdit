@@ -43,6 +43,7 @@ private:
     void saveFile();
     void saveAsFile();
     void exportAsPlainText();
+    void print();
 
     void bold();
     void italic();
@@ -53,6 +54,8 @@ private:
 
     void setAlign(Qt::Alignment align);
 
+    void createList(QTextListFormat::Style form);
+
     void makePlainText();
 
     void showContacts();
@@ -60,7 +63,7 @@ private:
 
     void setFormatMacro(std::function<void> func);
 
-    bool isSaving = false;
+    bool isSaving = true;
     QString filePath = "none";
     QVBoxLayout* layout;
     QTextEdit* textEdit;

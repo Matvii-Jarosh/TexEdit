@@ -29,6 +29,12 @@
 #include <QColorDialog>
 #include <QFontDialog>
 #include <QTextBlock>
+#include <QTextDocumentFragment>
+#include <QRegularExpression>
+#include <QTextList>
+#include <QPagedPaintDevice>
+#include <QPrinter>
+#include <QPrintDialog>
 
 MainWindow::MainWindow(const QString &_filePath, QWidget *parent)
     : QMainWindow(parent), filePath(_filePath.isEmpty() ? "none" : _filePath)
@@ -45,7 +51,10 @@ MainWindow::MainWindow(const QString &_filePath, QWidget *parent)
 
     textEdit = new QTextEdit();
     textEdit->setAcceptRichText(true);
-    connect(textEdit, &QTextEdit::textChanged, this, [this](){setWindowTitle(filePath + "*");isSaving = false;});
+    connect(textEdit, &QTextEdit::textChanged, this, [this](){
+        setWindowTitle(filePath + "*");
+        isSaving = false;
+    });
 
     layout->addWidget(textEdit);
 
@@ -85,6 +94,8 @@ void MainWindow::setupMenu() {
     fileMenu->addSeparator();
     fileMenu->addAction("&Export as text", this, &MainWindow::exportAsPlainText);
     fileMenu->addSeparator();
+    fileMenu->addAction(QIcon::fromTheme(QIcon::ThemeIcon::Printer), "&Print", this, &MainWindow::print)->setShortcut(QKeySequence::Print);
+    fileMenu->addSeparator();
     fileMenu->addAction(QIcon::fromTheme(QIcon::ThemeIcon::ApplicationExit), "&Exit", this, &QMainWindow::close)->setShortcut(QKeySequence::Quit);
 
     QMenu* editMenu = menuBar()->addMenu("&Edit");
@@ -122,12 +133,63 @@ void MainWindow::setupMenu() {
     formatMenu->addAction(QIcon::fromTheme(QIcon::ThemeIcon::FormatJustifyCenter), "&Center", this, [this](){setAlign(Qt::AlignCenter);});
     formatMenu->addAction(QIcon::fromTheme(QIcon::ThemeIcon::FormatJustifyRight), "&Align right", this, [this](){setAlign(Qt::AlignRight);});
     formatMenu->addSeparator();
+    formatMenu->addAction("&Disc list", this, [this](){createList(QTextListFormat::ListDisc);});
+    formatMenu->addAction("&Namerical list", this, [this](){createList(QTextListFormat::ListDecimal);});
+    formatMenu->addSeparator();
+    formatMenu->addAction(QIcon::fromTheme(QIcon::ThemeIcon::ListAdd), "&Horizontal line", this, [this](){textEdit->insertHtml("<hr>");});
+    formatMenu->addSeparator();
     formatMenu->addAction("&Make plain text", this, &MainWindow::makePlainText);
 
     QMenu* helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("&Contacts", this, &MainWindow::showContacts);
     helpMenu->addSeparator();
     helpMenu->addAction(QIcon::fromTheme(QIcon::ThemeIcon::HelpAbout), "&About", this, &MainWindow::showAbout);
+}
+
+void MainWindow::createList(QTextListFormat::Style style) {
+    QTextCursor cursor = textEdit->textCursor();
+    QTextListFormat listFormat;
+    listFormat.setStyle(style);
+    listFormat.setIndent(1);
+
+    if (!cursor.hasSelection()) {
+        cursor.insertList(listFormat);
+    } else {
+        int startPos = cursor.selectionStart();
+        int endPos = cursor.selectionEnd();
+
+        QTextBlock startBlock = textEdit->document()->findBlock(startPos);
+        QTextBlock endBlock = textEdit->document()->findBlock(endPos);
+
+        if (endPos == endBlock.position() && startBlock != endBlock) {
+            endBlock = endBlock.previous();
+        }
+
+        QVector<QTextBlock> blocksToFormat;
+        for (QTextBlock block = startBlock; block.isValid() && block.position() <= endBlock.position(); block = block.next()) {
+            blocksToFormat.append(block);
+        }
+
+        foreach (QTextBlock block, blocksToFormat) {
+            QTextCursor tempCursor(block);
+            QTextList* existingList = tempCursor.currentList();
+            if (existingList) {
+                existingList->remove(block);
+            }
+        }
+
+        if (!blocksToFormat.isEmpty()) {
+            cursor.setPosition(blocksToFormat.first().position());
+            QTextList* newList = cursor.createList(listFormat);
+
+            for (int i = 1; i < blocksToFormat.size(); ++i) {
+                cursor.setPosition(blocksToFormat[i].position());
+                newList->add(cursor.block());
+            }
+        }
+    }
+
+    textEdit->setTextCursor(cursor);
 }
 
 void MainWindow::setAlign(Qt::Alignment align) {
@@ -271,6 +333,18 @@ void MainWindow::exportAsPlainText() {
     QTextStream out(&file);
     out << textEdit->toPlainText();
     file.close();
+}
+
+void MainWindow::print() {
+    QString text = textEdit->toHtml();
+    QPrinter printer;
+    QPrintDialog printDialog(&printer, this);
+
+    if (printDialog.exec() == QDialog::Accepted) {
+        QTextDocument document;
+        document.setHtml(text);
+        document.print(&printer);
+    }
 }
 
 void MainWindow::bold() {
